@@ -189,7 +189,7 @@ def _run_autosync() -> None:
     logger.info("Auto-sync: running scheduled sync")
     hevy_auth_failed = False
     try:
-        result = sync(limit=10, dry_run=False)
+        result = sync(limit=10, dry_run=False, respect_grace=True)
     except Exception as e:
         from hevy2garmin.hevy import HevyAuthError
         if isinstance(e, HevyAuthError):
@@ -1202,7 +1202,7 @@ async def api_sync(request: Request):
         return HTMLResponse('<div class="toast toast-error">Another sync is already running. Please wait.</div>')
 
     try:
-        result = sync(**sync_kwargs)
+        result = sync(**sync_kwargs, respect_grace=False)
     except Exception as e:
         result = {"synced": 0, "skipped": 0, "failed": 1, "unmapped": [], "error": str(e)}
     finally:
