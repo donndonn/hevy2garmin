@@ -8,9 +8,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from datetime import datetime, timezone
+
 from hevy2garmin import db
 from hevy2garmin.config import load_config
-from hevy2garmin.fit import generate_fit
+from hevy2garmin.fit import generate_fit, _parse_timestamp
 from hevy2garmin.garmin import (
     delete_activity,
     find_activity_by_start_time,
@@ -82,6 +84,7 @@ def sync(
     since: str | None = None,
     fetch_all: bool = False,
     dry_run: bool = False,
+    respect_grace: bool = True,
     **overrides: Any,
 ) -> dict:
     """Sync Hevy workouts to Garmin Connect.
@@ -103,6 +106,7 @@ def sync(
     garmin_password = overrides.get("garmin_password") or cfg.get("garmin_password", "")
     garmin_token_dir = cfg.get("garmin_token_dir", "~/.garminconnect")
     skip_existing = cfg.get("sync", {}).get("skip_existing", True)
+    grace_minutes = cfg.get("sync", {}).get("grace_period_minutes", 120)
 
     if not limit and not fetch_all and not since:
         limit = cfg.get("sync", {}).get("default_limit", 10)
@@ -126,7 +130,7 @@ def sync(
     merge_activity_types = set(cfg.get("merge_activity_types", ["strength_training"]))
     merge_watch_strategy = cfg.get("merge_watch_strategy", "replace")
     description_enabled = cfg.get("description_enabled", True)
-    stats = {"synced": 0, "skipped": 0, "failed": 0, "total": len(workouts), "unmapped": [], "merged": 0, "merge_fallback": 0}
+    stats = {"synced": 0, "skipped": 0, "failed": 0, "total": len(workouts), "unmapped": [], "merged": 0, "merge_fallback": 0, "deferred": 0, "no_hr": 0, "duplicates": 0}
 
     if merge_mode:
         reset_circuit_breaker()
@@ -141,6 +145,19 @@ def sync(
             logger.debug("Skipping %s (%s) — already synced", wid, title)
             stats["skipped"] += 1
             continue
+
+        # Grace period: on automatic runs, wait until the workout has had time
+        # for its Garmin watch activity to land, so we merge instead of
+        # uploading a duplicate. Manual syncs pass respect_grace=False.
+        if respect_grace and grace_minutes > 0:
+            end_raw = workout.get("end_time") or workout.get("endTime", "")
+            end_dt = _parse_timestamp(end_raw)
+            if end_dt is not None and end_dt.tzinfo is not None:
+                age_min = (datetime.now(timezone.utc) - end_dt).total_seconds() / 60.0
+                if age_min < grace_minutes:
+                    logger.info("  Deferring %s — ended %.0f min ago (< %d min grace); waiting for watch data", wid, age_min, grace_minutes)
+                    stats["deferred"] += 1
+                    continue
 
         logger.info("Syncing: %s (%s)", title, wid)
 
@@ -179,9 +196,14 @@ def sync(
             # Embed merged HR (AirPods-preferred, watch fill) so it reaches
             # Garmin Connect, not just the dashboard (#158). Best-effort.
             hr_samples = None
-            if not dry_run:
+            hr_fusion_on = cfg.get("hr_fusion", {}).get("enabled", True)
+            if not dry_run and hr_fusion_on:
                 from hevy2garmin.hr import hr_for_sync
                 hr_samples = hr_for_sync(db, garmin_client, workout, cfg, _hr_limiter)
+                if not hr_samples:
+                    # One retry — the watch's daily HR for this window may not
+                    # have settled on the first try.
+                    hr_samples = hr_for_sync(db, garmin_client, workout, cfg, _hr_limiter)
 
             with tempfile.TemporaryDirectory() as tmp:
                 fit_path = str(Path(tmp) / f"{wid}.fit")
@@ -200,6 +222,7 @@ def sync(
                 # check when the merge wants a fresh upload (#159) — otherwise it
                 # would find the watch activity and refuse to upload the named one.
                 existing_id = None
+                uploaded = False
                 if start_time and not merge_forced_fresh:
                     existing_id = find_activity_by_start_time(garmin_client, start_time)
                 if existing_id:
@@ -208,6 +231,7 @@ def sync(
                 else:
                     upload_result = upload_fit(garmin_client, fit_path, workout_start=start_time)
                     activity_id = upload_result.get("activity_id")
+                    uploaded = bool(activity_id)
                     # "replace" strategy (#159): the named upload succeeded, so
                     # delete the watch recording to keep a single activity.
                     if activity_id and merge_delete_id:
@@ -237,6 +261,9 @@ def sync(
                     hevy_updated_at=workout.get("updated_at"),
                     sync_method=sync_method,
                 )
+                if hr_fusion_on and uploaded and not hr_samples:
+                    logger.warning("  ⚠ No heart-rate data available for %s — activity uploaded without HR", wid)
+                    stats["no_hr"] += 1
                 stats["synced"] += 1
                 logger.info("  ✓ Synced → Garmin activity %s", activity_id)
 
@@ -247,6 +274,17 @@ def sync(
     if stats["unmapped"]:
         logger.warning("\nUnmapped exercises: %s", ", ".join(stats["unmapped"]))
         logger.warning("Add custom mappings: hevy2garmin map \"Exercise Name\" --category N --subcategory N")
+
+    # Log-only duplicate scan (best-effort; never breaks a sync).
+    if not dry_run and garmin_client:
+        try:
+            from hevy2garmin.reconcile import detect_duplicates
+            dups = detect_duplicates(garmin_client, workouts, _hr_limiter)
+            stats["duplicates"] = len(dups)
+            if dups:
+                logger.warning("Found %d possible duplicate activity pair(s) from past races", len(dups))
+        except Exception:
+            logger.debug("duplicate scan skipped", exc_info=True)
 
     # Record to sync log (shows up in dashboard)
     trigger = "cli"

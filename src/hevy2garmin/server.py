@@ -189,7 +189,7 @@ def _run_autosync() -> None:
     logger.info("Auto-sync: running scheduled sync")
     hevy_auth_failed = False
     try:
-        result = sync(limit=10, dry_run=False)
+        result = sync(limit=10, dry_run=False, respect_grace=True)
     except Exception as e:
         from hevy2garmin.hevy import HevyAuthError
         if isinstance(e, HevyAuthError):
@@ -1202,7 +1202,7 @@ async def api_sync(request: Request):
         return HTMLResponse('<div class="toast toast-error">Another sync is already running. Please wait.</div>')
 
     try:
-        result = sync(**sync_kwargs)
+        result = sync(**sync_kwargs, respect_grace=False)
     except Exception as e:
         result = {"synced": 0, "skipped": 0, "failed": 1, "unmapped": [], "error": str(e)}
     finally:
@@ -1316,6 +1316,26 @@ async def api_unsync_all(request: Request):
 
     logger.info("Unsynced all %d workouts", count)
     return JSONResponse({"ok": True, "count": count})
+
+
+@app.post("/api/scan-duplicates", response_class=HTMLResponse)
+async def api_scan_duplicates(request: Request):
+    """On-demand: scan recent workouts for duplicate tool+watch activity pairs
+    and show the count. Log-only, no deletion."""
+    from hevy2garmin.reconcile import detect_duplicates
+    from hevy2garmin.sync import fetch_workouts, _hr_limiter
+    from hevy2garmin.hevy import HevyClient
+    from hevy2garmin.garmin import get_client
+    try:
+        cfg = load_config()
+        hevy = HevyClient(api_key=cfg.get("hevy_api_key"))
+        garmin_client = get_client(cfg.get("garmin_email"))
+        workouts = fetch_workouts(hevy, limit=50)
+        dups = detect_duplicates(garmin_client, workouts, _hr_limiter)
+    except Exception as e:
+        logger.warning("Duplicate scan failed: %s", e)
+        return HTMLResponse(f'<div class="toast toast-error">Scan failed: {e}</div>')
+    return HTMLResponse(f"<div>Found {len(dups)} possible duplicate(s). See server logs for details.</div>")
 
 
 @app.post("/api/toggle-autosync", response_class=HTMLResponse)

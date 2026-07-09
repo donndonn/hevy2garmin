@@ -118,6 +118,13 @@ You're on the dashboard. Click **Sync All Workouts** to backfill your history. T
 
 To keep future workouts syncing automatically, toggle **Auto-sync** on the dashboard. This creates a background job that syncs new workouts every 2 hours.
 
+> **Sync timing:** hevy2garmin waits `sync.grace_period_minutes` (default 120)
+> after a workout ends before syncing it automatically, so your Garmin watch
+> activity can land first and it merges into one activity instead of creating a
+> duplicate. On Vercel the default cron runs once a day; if your plan allows,
+> lower the cron interval (e.g. every few hours) so recently-finished workouts
+> sync the same day. Manual "Sync now" always ignores the grace period.
+
 **That's it.** Check [Garmin Connect](https://connect.garmin.com/modern/activities) to see your workouts with proper exercise names, sets, reps, and weights.
 
 ### Web Dashboard (local install)
