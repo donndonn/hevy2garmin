@@ -6,6 +6,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-07-13
+
+### Fixed
+- Merge mode: when Garmin rejects one exercise's name as an invalid sub-category, only that exercise's name is now stripped instead of every name in the workout. The offender is found by bisecting the payload (the atomic PUT gives no per-exercise error), so the rest of your exercises keep their real names. Falls back to stripping all names only if several exercises are rejected. (#222)
+
 ## [0.5.15] - 2026-07-10
 
 ### Changed

@@ -161,6 +161,74 @@ def _strip_exercise_names(payload: dict) -> dict:
     return stripped
 
 
+def _named_exercise_keys(payload: dict) -> list[tuple]:
+    """Distinct ``(category, name)`` of exercises that carry a name, first-seen
+    order. These are the candidates Garmin might reject as an invalid sub-category."""
+    keys: list[tuple] = []
+    seen: set[tuple] = set()
+    for s in payload.get("exerciseSets", []):
+        for ex in s.get("exercises", []):
+            name = ex.get("name")
+            if name is None:
+                continue
+            k = (ex.get("category"), name)
+            if k not in seen:
+                seen.add(k)
+                keys.append(k)
+    return keys
+
+
+def _strip_names_for(payload: dict, bad: set) -> dict:
+    """Copy of the payload with the name removed only for exercises whose
+    ``(category, name)`` is in ``bad`` (category kept)."""
+    stripped = dict(payload)
+    stripped["exerciseSets"] = [
+        {
+            **s,
+            "exercises": [
+                {**ex, "name": None} if (ex.get("category"), ex.get("name")) in bad else ex
+                for ex in s.get("exercises", [])
+            ],
+        }
+        for s in payload.get("exerciseSets", [])
+    ]
+    return stripped
+
+
+def _push_stripping_offenders(client, activity_id: int, payload: dict) -> None:
+    """Land the sets while keeping as many exercise names as possible.
+
+    Garmin's exerciseSets PUT is atomic and reports no per-exercise error, so when
+    it rejects a name as an invalid sub-category we bisect: strip a half of the
+    distinct exercises, retry, and narrow to the offender(s), then strip only those
+    names (category kept). Bounded to ~log2(n) extra PUTs, only on this rare path.
+    Falls back to stripping every name if it can't converge (multiple offenders
+    split across halves). Raises on any non-subcategory error."""
+    keys = _named_exercise_keys(payload)
+    if len(keys) <= 1:
+        push_exercise_sets(client, activity_id, _strip_exercise_names(payload))
+        return
+    cand = keys
+    while len(cand) > 1:
+        mid = len(cand) // 2
+        head = cand[:mid]
+        try:
+            push_exercise_sets(client, activity_id, _strip_names_for(payload, set(head)))
+            cand = head          # stripping head fixed it → offender(s) in head
+        except Exception as e:   # noqa: BLE001
+            if not _is_subcategory_rejection(e):
+                raise
+            cand = cand[mid:]    # still rejected → offender(s) in the tail
+    # Narrowed to one candidate: strip just it. If that still fails there is more
+    # than one offender split across halves, so fall back to stripping every name.
+    try:
+        push_exercise_sets(client, activity_id, _strip_names_for(payload, set(cand)))
+    except Exception as e:  # noqa: BLE001
+        if not _is_subcategory_rejection(e):
+            raise
+        push_exercise_sets(client, activity_id, _strip_exercise_names(payload))
+
+
 def _is_subcategory_rejection(exc: Exception) -> bool:
     """True when a push failed because Garmin rejected an exercise
     ``(category, subcategory)`` pair (HTTP 400 "Invalid Sub-Category"). The
@@ -426,10 +494,10 @@ def attempt_merge(
         if _is_subcategory_rejection(e):
             logger.warning(
                 "  exerciseSets rejected a subcategory for activity %s (%s); "
-                "retrying without exercise names", activity_id, e,
+                "retrying, stripping only the offending exercise name(s)", activity_id, e,
             )
             try:
-                push_exercise_sets(client, activity_id, _strip_exercise_names(payload))
+                _push_stripping_offenders(client, activity_id, payload)
                 _consecutive_failures = 0
             except Exception as e2:
                 _consecutive_failures += 1

@@ -547,19 +547,26 @@ def test_subcategory_400_retries_without_names(mock_gen, mock_desc, mock_rename,
     mock_find.return_value = act
     mock_get.return_value = {"exerciseSets": []}
     mock_gen.return_value = "Bench: 3 sets"
-    # first push rejected, the names-stripped retry succeeds
-    mock_push.side_effect = [
-        RuntimeError("API Error 400 - Invalid Sub-Category Passed in the request"),
-        None,
-    ]
+    # First push (full payload) is rejected; the strip retry(s) then succeed. The
+    # surgical strip (#222) bisects, so it may take a few PUTs — accept any.
+    calls: list = []
+
+    def push_side_effect(client, aid, payload):
+        calls.append(payload)
+        if len(calls) == 1:
+            raise RuntimeError("API Error 400 - Invalid Sub-Category Passed in the request")
+        return None
+
+    mock_push.side_effect = push_side_effect
 
     result = attempt_merge(MagicMock(), HEVY_WORKOUT, MagicMock(), watch_strategy="merge")
 
     assert result.merged is True
-    assert mock_push.call_count == 2
-    retry_payload = mock_push.call_args_list[1].args[2]
-    active = [s for s in retry_payload["exerciseSets"] if s["setType"] == "ACTIVE"]
-    assert active and all(ex["name"] is None for s in active for ex in s["exercises"])
+    assert len(calls) >= 2  # retried after the subcategory rejection
+    # The landed retry stripped at least one exercise name (category kept).
+    landed = calls[-1]
+    all_names = [ex.get("name") for s in landed["exerciseSets"] for ex in s.get("exercises", [])]
+    assert any(n is None for n in all_names)
 
 
 @patch("hevy2garmin.merge.time.sleep")
