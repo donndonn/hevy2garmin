@@ -147,3 +147,39 @@ def get_app_config(key: str, **kw) -> dict | None:
 def set_app_config(key: str, value: dict, **kw) -> None:
     """Store a JSON value in the generic key-value app cache."""
     return get_db().set_app_config(key, value)
+
+
+def claim_pending(hevy_id: str, payload: dict, **kw) -> bool:
+    return get_db().claim_pending(hevy_id, payload)
+
+
+def get_pending(hevy_id: str, **kw) -> dict | None:
+    return get_db().get_pending(hevy_id)
+
+
+def list_pending(**kw) -> list[dict]:
+    return get_db().list_pending()
+
+
+def update_pending(hevy_id: str, **changes) -> None:
+    return get_db().update_pending(hevy_id, **changes)
+
+
+def delete_pending(hevy_id: str, **kw) -> bool:
+    return get_db().delete_pending(hevy_id)
+
+
+def complete_pending(hevy_id: str, terminal: dict, **kw) -> None:
+    return get_db().complete_pending(hevy_id, terminal)
+
+
+def resolve_terminal(hevy_id: str, **kwargs) -> None:
+    return get_db().resolve_terminal(hevy_id, **kwargs)
+
+
+def get_workout_states(hevy_ids: list[str], **kw) -> dict[str, dict]:
+    return get_db().get_workout_states(hevy_ids)
+
+
+def get_terminal_counts(**kw) -> dict[str, int]:
+    return get_db().get_terminal_counts()
