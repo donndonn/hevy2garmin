@@ -6,7 +6,7 @@
 </div>
 
 <div class="card" style="margin-bottom:16px;">
-  <form hx-post="/api/routines/sync" hx-target="#routines-result" hx-indicator="#routines-spinner"
+  <form hx-post="/api/routines/sync" hx-target="#routines-result" hx-disabled-elt="find button"
         style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
     <button type="submit" class="btn btn-primary">Sync all routines</button>
     <label style="display:flex; gap:6px; align-items:center; color:var(--text-muted); font-size:14px;">
@@ -16,7 +16,9 @@
     <label style="display:flex; gap:6px; align-items:center; color:var(--text-muted); font-size:14px;" title="Re-create even routines already synced">
       <input type="checkbox" name="force" value="1"> Force re-create
     </label>
-    <span id="routines-spinner" class="htmx-indicator" style="color:var(--text-muted);">Syncing…</span>
+    <span class="htmx-indicator" style="align-items:center; gap:6px; color:var(--text-muted); font-size:14px;">
+      <span class="spinner"></span> Syncing…
+    </span>
   </form>
   <div id="routines-result" style="margin-top:12px;"></div>
 </div>
@@ -49,7 +51,7 @@
           {% if r.synced %}
           <details>
             <summary style="cursor:pointer; user-select:none;" title="Schedule on the Garmin calendar">📅 Schedule</summary>
-            <form hx-post="/api/routines/{{ r.id }}/schedule" hx-target="#routines-result" hx-swap="innerHTML"
+            <form hx-post="/api/routines/{{ r.id }}/schedule" hx-target="#routines-result" hx-swap="innerHTML" hx-disabled-elt="find button"
                   style="margin-top:8px; display:flex; flex-direction:column; gap:8px; font-size:13px; max-width:320px;">
               <label style="display:flex; gap:6px; align-items:center;">
                 <input type="radio" name="mode" value="once" checked> One-off
@@ -73,7 +75,12 @@
                        style="background:var(--bg-primary); color:var(--text); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px 6px;">
                 for <input type="number" name="weeks" min="1" max="52" value="4" style="width:60px; background:var(--bg-primary); color:var(--text); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px 6px;"> weeks
               </label>
-              <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Add to calendar</button>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button type="submit" class="btn btn-primary">Add to calendar</button>
+                <span class="htmx-indicator" style="align-items:center; gap:6px; color:var(--text-muted);">
+                  <span class="spinner"></span> Scheduling…
+                </span>
+              </div>
             </form>
           </details>
           {% else %}
