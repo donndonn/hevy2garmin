@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-07-18
+
 ### Added
 - The watch-activity **Replace** strategy now extracts high-resolution heart-rate samples from the original Garmin FIT and embeds them in the named Hevy replacement before deleting the watch copy. If the source cannot be extracted or restored from backup, replacement stops and preserves the original activity.
 
