@@ -151,8 +151,14 @@ class Database(ABC):
         hevy_updated_at: str | None = None,
         scheduled_date: str | None = None,
         content_hash: str | None = None,
+        status: str = "success",
     ) -> None:
-        """Record a routine synced to a Garmin planned workout."""
+        """Record a routine synced to a Garmin planned workout.
+
+        ``status="schedule_pending"`` marks a workout that was created on Garmin
+        but whose calendar scheduling hasn't been confirmed yet, so the next sync
+        retries it instead of skipping the routine as already done.
+        """
 
     @abstractmethod
     def delete_synced_routine(self, hevy_routine_id: str) -> bool:

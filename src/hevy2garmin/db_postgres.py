@@ -198,6 +198,7 @@ class PostgresDatabase(Database):
         hevy_updated_at: str | None = None,
         scheduled_date: str | None = None,
         content_hash: str | None = None,
+        status: str = "success",
     ) -> None:
         with self._get_conn() as conn:
             with conn.cursor() as cur:
@@ -205,7 +206,7 @@ class PostgresDatabase(Database):
                     """
                     INSERT INTO synced_routines
                         (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, 'success')
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (hevy_routine_id) DO UPDATE SET
                         garmin_workout_id = EXCLUDED.garmin_workout_id,
                         title = EXCLUDED.title,
@@ -213,9 +214,9 @@ class PostgresDatabase(Database):
                         scheduled_date = EXCLUDED.scheduled_date,
                         content_hash = EXCLUDED.content_hash,
                         synced_at = NOW(),
-                        status = 'success'
+                        status = EXCLUDED.status
                     """,
-                    (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash),
+                    (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash, status),
                 )
             conn.commit()
 

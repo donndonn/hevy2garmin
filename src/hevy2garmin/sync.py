@@ -852,11 +852,16 @@ def sync_routines(
             )
             content_hash = workout_content_hash(payload)
 
-            # Skip when the generated payload is byte-for-byte what we last synced.
+            # Skip when the generated payload is byte-for-byte what we last synced
+            # AND the workout is fully landed. A row left in 'schedule_pending' (the
+            # workout was created but a prior run's schedule call failed) is not done,
+            # so we don't skip it — the next sync retries the schedule below.
             # Hashing the payload (not Hevy's updated_at) also re-syncs when this
             # builder changes — e.g. after adding rest steps. --force overrides it.
             existing = store.get_synced_routine(rid)
-            if not force and existing and existing.get("content_hash") == content_hash:
+            content_synced = bool(existing and existing.get("content_hash") == content_hash)
+            already_done = content_synced and (existing.get("status") or "success") == "success"
+            if not force and already_done:
                 logger.debug("Skipping routine %s (%s) — unchanged", rid, title)
                 stats["skipped"] += 1
                 continue
@@ -894,7 +899,21 @@ def sync_routines(
             # explicit schedule_date counts toward the "scheduled" stat; re-applying a
             # stored date is a restore, not a new booking.
             effective_schedule_date = schedule_date or (existing or {}).get("scheduled_date")
+
             if effective_schedule_date:
+                # Persist the created workout *before* the schedule call, marked
+                # 'schedule_pending'. If scheduling then errors (Garmin 429/500), the
+                # workout is already tracked, so the next sync deletes+recreates it
+                # instead of orphaning it and creating a duplicate.
+                store.mark_routine_synced(
+                    rid,
+                    garmin_workout_id=str(workout_id),
+                    title=title,
+                    hevy_updated_at=updated_at,
+                    scheduled_date=effective_schedule_date,
+                    content_hash=content_hash,
+                    status="schedule_pending",
+                )
                 schedule_workout(garmin_client, workout_id, effective_schedule_date)
                 if schedule_date:
                     stats["scheduled"] += 1

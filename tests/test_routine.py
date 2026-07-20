@@ -328,6 +328,41 @@ class TestSyncRoutines:
         # ...and the date is kept on the record instead of being wiped to None.
         assert store.get_synced_routine("r1")["scheduled_date"] == "2026-08-01"
 
+    def test_schedule_failure_persists_workout_then_recovers(self, tmp_path: Path) -> None:
+        # #2 regression: create_workout succeeds, then schedule_workout errors. The
+        # created workout must be recorded (as schedule_pending) so the next sync
+        # recovers it instead of orphaning it and creating a duplicate.
+        routines = [{"id": "r1", "title": "Push", "updated_at": "2026-01-01T00:00:00Z", "exercises": []}]
+        store, create_mock, schedule_mock, patches = self._patched(tmp_path, routines)
+        schedule_mock.side_effect = RuntimeError("Garmin 429")
+
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            first = sync_module.sync_routines(schedule_date="2026-08-01")
+
+        # The schedule failed, but the created workout is tracked (not orphaned).
+        assert first["failed"] == 1
+        assert first["created"] == 0
+        record = store.get_synced_routine("r1")
+        assert record is not None
+        assert record["garmin_workout_id"] == "777"
+        assert record["status"] == "schedule_pending"
+
+        # Next sync: scheduling recovers. The pending workout is deleted and recreated
+        # (no second, untracked copy) and the schedule is retried on the stored date.
+        schedule_mock.side_effect = None
+        delete_mock = MagicMock()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                patch.object(sync_module, "delete_workout", delete_mock), patches[6]:
+            second = sync_module.sync_routines()
+
+        assert second["updated"] == 1
+        assert second["failed"] == 0
+        # The previously-created workout (777) is deleted before recreating — orphan recovered.
+        delete_mock.assert_called_once_with(delete_mock.call_args[0][0], "777")
+        final = store.get_synced_routine("r1")
+        assert final["status"] == "success"
+        assert final["scheduled_date"] == "2026-08-01"
+
 
 class TestRoutineScheduleDates:
     def test_once_returns_single_date(self) -> None:
