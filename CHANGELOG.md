@@ -6,6 +6,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Routine sync no longer risks a duplicate planned workout when Garmin scheduling fails mid-sync. Previously the created workout was only recorded *after* the schedule call, so a Garmin 429/500 on scheduling left the workout orphaned and untracked, and the next sync created a second copy. The workout is now persisted right after creation (as `schedule_pending`); if scheduling then fails, the next sync deletes and recreates that tracked workout and retries the schedule instead of duplicating it.
+
 ## [0.5.21] - 2026-07-19
 
 ### Fixed

@@ -192,13 +192,14 @@ class SQLiteDatabase(Database):
         hevy_updated_at: str | None = None,
         scheduled_date: str | None = None,
         content_hash: str | None = None,
+        status: str = "success",
     ) -> None:
         conn = self._get_conn()
         conn.execute(
             """
             INSERT INTO synced_routines
                 (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'success')
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(hevy_routine_id) DO UPDATE SET
                 garmin_workout_id = excluded.garmin_workout_id,
                 title = excluded.title,
@@ -206,9 +207,9 @@ class SQLiteDatabase(Database):
                 scheduled_date = excluded.scheduled_date,
                 content_hash = excluded.content_hash,
                 synced_at = datetime('now'),
-                status = 'success'
+                status = excluded.status
             """,
-            (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash),
+            (hevy_routine_id, garmin_workout_id, title, hevy_updated_at, scheduled_date, content_hash, status),
         )
         conn.commit()
         conn.close()
