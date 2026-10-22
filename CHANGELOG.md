@@ -6,6 +6,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- Raise `certifi` to `>=2026.10.19` and install hash-pinned pip 26.2.2 in Docker before dependencies, so the compromised eMudhra/emSign CA is no longer trusted ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)).
+
 ## [0.10.1] - 2026-08-30
 
 ### Fixed
