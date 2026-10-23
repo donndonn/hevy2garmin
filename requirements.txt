@@ -5,6 +5,7 @@ garminconnect>=0.3.0,<0.4.0
 curl_cffi>=0.6
 ua-generator>=1.0
 requests>=2.31
+certifi>=2026.10.19
 fit-tool>=0.9.15
 pynacl>=1.5
 psycopg2-binary>=2.9

@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Docker installs pip 26.2.2 before dependencies, and certifi is at least 2026.10.19, so the CA bundle no longer includes emSign ECC Root CA - G3 (GHSA-6q48-6c7w-9gw2).
+
 ### Added
 
 - The dashboard tells a fork when the original repo has new commits: "Update available: N new changes since your version", with **See what's new** linking to the GitHub compare. `GET /api/update-check` compares the deployed commit (`VERCEL_GIT_COMMIT_SHA`, or `HEVY2GARMIN_COMMIT_SHA` self-hosted) with upstream `main`, using the saved GitHub token when there is one, and caches the answer in `app_cache` for 6 hours. The banner loads after the page renders, and any GitHub or network failure means no banner. A failed check is cached under its own key for GitHub's `retry-after` when it sends one, else until its `x-ratelimit-reset` time, else for an hour, so dashboard views do not retry GitHub on every load; it never replaces a cached answer. A fork from before the history rewrite of 9 September 2026 gets the banner without a count, with links to the fork and the README's update steps. **Dismiss** hides it until upstream has a newer commit. On a Vercel fork with a saved GitHub token, **Update now** does what GitHub's Sync fork does: `POST /api/update-fork` (session-gated) calls merge-upstream on the fork's default branch, then the page waits for the new deployment and reloads. When GitHub had nothing to merge (`merge_type: "none"`), the banner says the fork is already up to date and that a new deployment may still be on its way, waits for nothing, and the cached check is refreshed so the banner goes. A 409 or 422 is not retried and links to the fork and the update steps; a 401 or 403 says the token needs the `repo` scope, and `workflow` when the update changes `.github/workflows/`. Self-hosted shows the banner without the button. `H2G_UPDATE_CHECK=off` turns it off; `H2G_UPSTREAM_REPO` names the repo to follow (default `drkostas/hevy2garmin`). Nothing is checked in demo mode, without a deployed commit or fork repo, or on the upstream repo itself (#749).
